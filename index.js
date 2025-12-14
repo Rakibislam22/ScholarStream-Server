@@ -32,6 +32,14 @@ async function run() {
     try {
         await client.connect();
 
+        const db = client.db('scholarships-db');
+        const userCollection = db.collection('users');
+        const scholarshipsCollection = db.collection('Scholarships');
+
+        app.get('/scholarships', async(req, res) => {
+            const allSc = await scholarshipsCollection.find().toArray();
+            res.send(allSc);
+        })
 
 
         // Send a ping to confirm a successful connection
