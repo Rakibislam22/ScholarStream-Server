@@ -37,6 +37,21 @@ async function run() {
         const scholarshipsCollection = db.collection('Scholarships');
         const reviewsCollection = db.collection('reviews');
 
+        app.post('/users', async (req, res) => {
+            const newUser = req.body;
+            const email = newUser.email;
+
+            const query = { email: email };
+            const userExist = await userCollection.findOne(query);
+
+            if (userExist) {
+                res.send({ message: 'User already exist...!' })
+            } else {
+                const result = await userCollection.insertOne(newUser);
+                res.send(result);
+            }
+        })
+
         app.get('/scholarships', async (req, res) => {
             const allSc = await scholarshipsCollection.find().toArray();
             res.send(allSc);
