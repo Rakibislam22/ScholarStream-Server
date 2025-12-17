@@ -35,6 +35,7 @@ async function run() {
         const db = client.db('scholarships-db');
         const userCollection = db.collection('users');
         const scholarshipsCollection = db.collection('Scholarships');
+        const reviewsCollection = db.collection('reviews');
 
         app.get('/scholarships', async (req, res) => {
             const allSc = await scholarshipsCollection.find().toArray();
@@ -45,6 +46,12 @@ async function run() {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) };
             const result = await scholarshipsCollection.findOne(query);
+            res.send(result);
+        })
+        app.get('/reviews/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { scholarshipId: id };
+            const result = await reviewsCollection.find(query).toArray();
             res.send(result);
         })
 
