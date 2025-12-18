@@ -280,6 +280,79 @@ async function run() {
             }
         });
 
+        // Get all applications for Moderator
+        app.get("/moderator/applications", async (req, res) => {
+            try {
+                const result = await applicationCollection.find().toArray();
+                res.send(result);
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ message: "Failed to fetch applications" });
+            }
+        });
+
+        // Update application status
+        app.patch("/applications/status/:id", async (req, res) => {
+            try {
+                const id = req.params.id;
+                const { status } = req.body;
+
+                const result = await applicationCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    {
+                        $set: {
+                            applicationStatus: status,
+                        },
+                    }
+                );
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: "Failed to update status" });
+            }
+        });
+
+
+        // Add or update application feedback
+        app.patch("/applications/feedback/:id", async (req, res) => {
+            try {
+                const id = req.params.id;
+                const { feedback } = req.body;
+
+                const result = await applicationCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    {
+                        $set: {
+                            feedback,
+                        },
+                    }
+                );
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: "Failed to update feedback" });
+            }
+        });
+
+        // Reject application
+        app.patch("/applications/reject/:id", async (req, res) => {
+            try {
+                const id = req.params.id;
+
+                const result = await applicationCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    {
+                        $set: {
+                            applicationStatus: "rejected",
+                        },
+                    }
+                );
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: "Failed to reject application" });
+            }
+        });
 
 
         // Stripe Payment api
