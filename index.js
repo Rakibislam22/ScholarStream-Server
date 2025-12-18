@@ -70,6 +70,31 @@ async function run() {
             res.send(result);
         })
 
+        // Create new scholarship
+        app.post('/add-scholarship', async (req, res) => {
+            try {
+                const scholarshipData = req.body;
+
+                // basic validation
+                if (
+                    !scholarshipData.scholarshipName ||
+                    !scholarshipData.universityName ||
+                    !scholarshipData.postedUserEmail
+                ) {
+                    return res.status(400).send({ message: "Missing required fields" });
+                }
+
+                scholarshipData.createdAt = new Date();
+
+                const result = await scholarshipsCollection.insertOne(scholarshipData);
+
+                res.send(result);
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ message: "Failed to add scholarship" });
+            }
+        });
+
 
         // Send a ping to confirm a successful connection
         await client.db("admin").command({ ping: 1 });
