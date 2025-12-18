@@ -47,6 +47,7 @@ async function run() {
         const userCollection = db.collection('users');
         const scholarshipsCollection = db.collection('Scholarships');
         const reviewsCollection = db.collection('reviews');
+        const applicationCollection = db.collection('Applications');
 
         app.post('/users', async (req, res) => {
             const newUser = req.body;
@@ -204,9 +205,7 @@ async function run() {
                 application.applicationDate = new Date();
                 application.feedback = "";
 
-                const result = await db
-                    .collection("Applications")
-                    .insertOne(application);
+                const result = await applicationCollection.insertOne(application);
 
                 res.send(result);
             } catch (error) {
@@ -218,7 +217,7 @@ async function run() {
         app.patch("/applications/payment/:id", async (req, res) => {
             const id = req.params.id;
 
-            await db.collection("Applications").updateOne(
+            await applicationCollection.updateOne(
                 { _id: new ObjectId(id) },
                 { $set: { paymentStatus: "paid" } }
             );
@@ -226,10 +225,64 @@ async function run() {
             res.send({ message: "Payment updated" });
         });
 
+        // Get applications by user email
+        app.get("/applications", async (req, res) => {
+            try {
+                const email = req.query.email;
+
+                if (!email) {
+                    return res.status(400).send({ message: "Email query is required" });
+                }
+
+                const result = await applicationCollection
+                    .find({ userEmail: email })
+                    .toArray();
+
+                res.send(result);
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ message: "Failed to get applications" });
+            }
+        });
+
+        // Delete application (only if pending)
+        app.delete("/applications/:id", async (req, res) => {
+            try {
+                const id = req.params.id;
+
+                const application = await applicationCollection.findOne({
+                    _id: new ObjectId(id),
+                });
+
+                if (!application) {
+                    return res.status(404).send({ message: "Application not found" });
+                }
+
+                if (application.applicationStatus !== "pending") {
+                    return res.status(403).send({
+                        message: "Only pending applications can be deleted",
+                    });
+                }
+
+                const result = await applicationCollection.deleteOne({
+                    _id: new ObjectId(id),
+                });
+
+                res.send({
+                    message: "Application deleted successfully",
+                    deletedCount: result.deletedCount,
+                });
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ message: "Failed to delete application" });
+            }
+        });
+
+
 
         // Stripe Payment api
         app.post("/create-payment-intent", async (req, res) => {
-            const { amount, applicationId, scholarshipId, userId,userEmail } = req.body;
+            const { amount, applicationId, scholarshipId, userId, userEmail } = req.body;
 
             const session = await stripe.checkout.sessions.create({
                 mode: "payment",
@@ -248,7 +301,7 @@ async function run() {
                 metadata: {
                     applicationId: applicationId,
                     scholarshipId: scholarshipId,
-                    userId : userId
+                    userId: userId
                 },
                 customer_email: userEmail,
                 success_url: `http://localhost:5173/payment-success/${applicationId}`,
