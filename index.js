@@ -28,6 +28,15 @@ const client = new MongoClient(uri, {
     }
 });
 
+// FB ADmin SDK
+const admin = require("firebase-admin");
+
+const serviceAccount = require("./scholarstream-1-adminsdk.json");
+
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+});
+
 async function run() {
     try {
         await client.connect();
@@ -51,6 +60,59 @@ async function run() {
                 res.send(result);
             }
         })
+
+        app.get('/users', async (req, res) => {
+            const result = await userCollection.find().toArray();
+            res.send(result);
+        });
+
+        app.patch('/users/role/:id', async (req, res) => {
+            const id = req.params.id;
+            const { role } = req.body;
+
+            const query = { _id: new ObjectId(id) };
+            const updateDoc = {
+                $set: { role }
+            };
+
+            const result = await userCollection.updateOne(query, updateDoc);
+            res.send(result);
+        });
+
+        app.delete('/users/:id', async (req, res) => {
+            try {
+                const id = req.params.id;
+
+                // 🔹 1. Find user in MongoDB
+                const user = await userCollection.findOne({ _id: new ObjectId(id) });
+
+                if (!user) {
+                    return res.status(404).send({ message: "User not found" });
+                }
+
+                // 🔹 2. Delete from Firebase Auth
+                try {
+                    const firebaseUser = await admin.auth().getUserByEmail(user.email);
+                    await admin.auth().deleteUser(firebaseUser.uid);
+                } catch (fbError) {
+                    console.log("Firebase user not found, skipping Firebase delete");
+                }
+
+                // 🔹 3. Delete from MongoDB
+                const result = await userCollection.deleteOne({
+                    _id: new ObjectId(id),
+                });
+
+                res.send({
+                    message: "User deleted from MongoDB & Firebase",
+                    deletedCount: result.deletedCount,
+                });
+
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ message: "Failed to delete user" });
+            }
+        });
 
         app.get('/scholarships', async (req, res) => {
             const allSc = await scholarshipsCollection.find().toArray();
