@@ -135,6 +135,8 @@ async function run() {
             const result = await scholarshipsCollection.findOne(query);
             res.send(result);
         })
+
+        // review for Scholarship
         app.get('/reviews/:id', async (req, res) => {
             const id = req.params.id;
             const query = { scholarshipId: id };
@@ -309,6 +311,78 @@ async function run() {
             });
 
             res.send({ url: session.url });
+        });
+
+        // Post review
+        app.post("/reviews", async (req, res) => {
+            const recData = req.body;
+
+            const result = await reviewsCollection.insertOne(recData);
+            res.send(result);
+
+        })
+
+        // Get reviews by user email
+        app.get("/my-reviews", async (req, res) => {
+            try {
+                const email = req.query.email;
+
+                if (!email) {
+                    return res.status(400).send({ message: "Email is required" });
+                }
+
+                const result = await reviewsCollection
+                    .find({ userEmail: email })
+                    .toArray();
+
+                res.send(result);
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ message: "Failed to fetch reviews" });
+            }
+        });
+
+        // Update review
+        app.patch("/reviews/:id", async (req, res) => {
+            try {
+                const id = req.params.id;
+                const { ratingPoint, reviewComment } = req.body;
+
+                const result = await reviewsCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    {
+                        $set: {
+                            ratingPoint,
+                            reviewComment,
+                            updatedAt: new Date(),
+                        },
+                    }
+                );
+
+                res.send(result);
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ message: "Failed to update review" });
+            }
+        });
+
+        // Delete review
+        app.delete("/reviews/:id", async (req, res) => {
+            try {
+                const id = req.params.id;
+
+                const result = await reviewsCollection.deleteOne({
+                    _id: new ObjectId(id),
+                });
+
+                res.send({
+                    message: "Review deleted",
+                    deletedCount: result.deletedCount,
+                });
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ message: "Failed to delete review" });
+            }
         });
 
 
