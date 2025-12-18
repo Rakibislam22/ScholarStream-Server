@@ -95,6 +95,25 @@ async function run() {
             }
         });
 
+        // Update scholarship
+        app.patch('/scholarship/:id', async (req, res) => {
+            try {
+                const id = req.params.id;
+                const updatedData = req.body;
+
+                const query = { _id: new ObjectId(id) };
+                const updateDoc = {
+                    $set: updatedData
+                };
+
+                const result = await scholarshipsCollection.updateOne(query, updateDoc);
+                res.send(result);
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ message: "Failed to update scholarship" });
+            }
+        });
+
         // Delete scholarship
         app.delete('/scholarship/:id', async (req, res) => {
             const id = req.params.id;
