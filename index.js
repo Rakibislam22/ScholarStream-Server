@@ -3,6 +3,8 @@ const cors = require('cors');
 require('dotenv').config()
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -190,6 +192,70 @@ async function run() {
 
             const result = await scholarshipsCollection.deleteOne(query);
             res.send(result);
+        });
+
+        // Application post
+        app.post("/applications", async (req, res) => {
+            try {
+                const application = req.body;
+
+                application.applicationStatus = "pending";
+                application.paymentStatus = "unpaid";
+                application.applicationDate = new Date();
+                application.feedback = "";
+
+                const result = await db
+                    .collection("Applications")
+                    .insertOne(application);
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: "Failed to apply" });
+            }
+        });
+
+        // after payment complete status update
+        app.patch("/applications/payment/:id", async (req, res) => {
+            const id = req.params.id;
+
+            await db.collection("Applications").updateOne(
+                { _id: new ObjectId(id) },
+                { $set: { paymentStatus: "paid" } }
+            );
+
+            res.send({ message: "Payment updated" });
+        });
+
+
+        // Stripe Payment api
+        app.post("/create-payment-intent", async (req, res) => {
+            const { amount, applicationId, scholarshipId, userId,userEmail } = req.body;
+
+            const session = await stripe.checkout.sessions.create({
+                mode: "payment",
+                line_items: [
+                    {
+                        price_data: {
+                            currency: "usd",
+                            product_data: {
+                                name: "Scholarship Application Fee",
+                            },
+                            unit_amount: amount * 100,
+                        },
+                        quantity: 1,
+                    },
+                ],
+                metadata: {
+                    applicationId: applicationId,
+                    scholarshipId: scholarshipId,
+                    userId : userId
+                },
+                customer_email: userEmail,
+                success_url: `http://localhost:5173/payment-success/${applicationId}`,
+                cancel_url: `http://localhost:5173/payment-cancel`,
+            });
+
+            res.send({ url: session.url });
         });
 
 
