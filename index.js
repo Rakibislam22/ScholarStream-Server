@@ -12,7 +12,39 @@ const port = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// FB ADmin SDK
+const admin = require("firebase-admin");
 
+const serviceAccount = JSON.parse(
+    Buffer.from(
+        process.env.FB_SDK_BASE64,
+        "base64"
+    ).toString("utf8")
+);
+
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+});
+
+const verifyFirebaseToken = async (req, res, next) => {
+    try {
+        const authHeader = req.headers.authorization;
+
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            return res.status(401).send({ message: "Unauthorized access" });
+        }
+
+        const token = authHeader.split(" ")[1];
+
+        const decodedUser = await admin.auth().verifyIdToken(token);
+
+        req.decoded = decodedUser; // email, uid, etc
+        next();
+    } catch (error) {
+        console.error("JWT verification failed", error);
+        return res.status(401).send({ message: "Invalid token" });
+    }
+};
 
 app.get('/', (req, res) => {
     res.send('Scholar-Stream Server is Running');
@@ -30,14 +62,6 @@ const client = new MongoClient(uri, {
     }
 });
 
-// FB ADmin SDK
-const admin = require("firebase-admin");
-
-const serviceAccount = require("./scholarstream-1-adminsdk.json");
-
-admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-});
 
 async function run() {
     try {
@@ -76,7 +100,7 @@ async function run() {
             res.send({ role: user?.role || 'user' })
         })
 
-        app.patch('/users/role/:id', async (req, res) => {
+        app.patch('/users/role/:id',verifyFirebaseToken, async (req, res) => {
             const id = req.params.id;
             const { role } = req.body;
 
@@ -89,7 +113,7 @@ async function run() {
             res.send(result);
         });
 
-        app.delete('/users/:id', async (req, res) => {
+        app.delete('/users/:id',verifyFirebaseToken, async (req, res) => {
             try {
                 const id = req.params.id;
 
@@ -145,7 +169,7 @@ async function run() {
         })
 
         // Create new scholarship
-        app.post('/add-scholarship', async (req, res) => {
+        app.post('/add-scholarship',verifyFirebaseToken, async (req, res) => {
             try {
                 const scholarshipData = req.body;
 
@@ -170,7 +194,7 @@ async function run() {
         });
 
         // Update scholarship
-        app.patch('/scholarship/:id', async (req, res) => {
+        app.patch('/scholarship/:id',verifyFirebaseToken, async (req, res) => {
             try {
                 const id = req.params.id;
                 const updatedData = req.body;
@@ -189,7 +213,7 @@ async function run() {
         });
 
         // Delete scholarship
-        app.delete('/scholarship/:id', async (req, res) => {
+        app.delete('/scholarship/:id',verifyFirebaseToken, async (req, res) => {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) };
 
@@ -198,7 +222,7 @@ async function run() {
         });
 
         // Application post
-        app.post("/applications", async (req, res) => {
+        app.post("/applications",verifyFirebaseToken, async (req, res) => {
             try {
                 const application = req.body;
 
@@ -216,7 +240,7 @@ async function run() {
         });
 
         // after payment complete status update
-        app.patch("/applications/payment/:id", async (req, res) => {
+        app.patch("/applications/payment/:id",verifyFirebaseToken, async (req, res) => {
             const id = req.params.id;
 
             await applicationCollection.updateOne(
@@ -225,6 +249,26 @@ async function run() {
             );
 
             res.send({ message: "Payment updated" });
+        });
+
+        // Get single application by id
+        app.get("/applications/:id", async (req, res) => {
+            try {
+                const id = req.params.id;
+
+                const application = await applicationCollection.findOne({
+                    _id: new ObjectId(id),
+                });
+
+                if (!application) {
+                    return res.status(404).send({ message: "Application not found" });
+                }
+
+                res.send(application);
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ message: "Failed to get application" });
+            }
         });
 
         // Get applications by user email
@@ -248,7 +292,7 @@ async function run() {
         });
 
         // Delete application (only if pending)
-        app.delete("/applications/:id", async (req, res) => {
+        app.delete("/applications/:id",verifyFirebaseToken, async (req, res) => {
             try {
                 const id = req.params.id;
 
@@ -292,7 +336,7 @@ async function run() {
         });
 
         // Update application status
-        app.patch("/applications/status/:id", async (req, res) => {
+        app.patch("/applications/status/:id",verifyFirebaseToken, async (req, res) => {
             try {
                 const id = req.params.id;
                 const { status } = req.body;
@@ -314,7 +358,7 @@ async function run() {
 
 
         // Add or update application feedback
-        app.patch("/applications/feedback/:id", async (req, res) => {
+        app.patch("/applications/feedback/:id",verifyFirebaseToken, async (req, res) => {
             try {
                 const id = req.params.id;
                 const { feedback } = req.body;
@@ -335,7 +379,7 @@ async function run() {
         });
 
         // Reject application
-        app.patch("/applications/reject/:id", async (req, res) => {
+        app.patch("/applications/reject/:id",verifyFirebaseToken, async (req, res) => {
             try {
                 const id = req.params.id;
 
@@ -356,7 +400,7 @@ async function run() {
 
 
         // Stripe Payment api
-        app.post("/create-payment-intent", async (req, res) => {
+        app.post("/create-payment-intent",verifyFirebaseToken, async (req, res) => {
             const { amount, applicationId, scholarshipId, userId, userEmail } = req.body;
 
             const session = await stripe.checkout.sessions.create({
@@ -379,15 +423,15 @@ async function run() {
                     userId: userId
                 },
                 customer_email: userEmail,
-                success_url: `http://localhost:5173/payment-success/${applicationId}`,
-                cancel_url: `http://localhost:5173/payment-cancel`,
+                success_url: `${process.env.SITE_DOMAIN}/payment-success/${applicationId}`,
+                cancel_url: `${process.env.SITE_DOMAIN}/payment-cancel/${applicationId}`,
             });
 
             res.send({ url: session.url });
         });
 
         // Post review
-        app.post("/reviews", async (req, res) => {
+        app.post("/reviews",verifyFirebaseToken, async (req, res) => {
             const recData = req.body;
 
             const result = await reviewsCollection.insertOne(recData);
@@ -416,7 +460,7 @@ async function run() {
         });
 
         // Update review
-        app.patch("/reviews/:id", async (req, res) => {
+        app.patch("/reviews/:id",verifyFirebaseToken, async (req, res) => {
             try {
                 const id = req.params.id;
                 const { ratingPoint, reviewComment } = req.body;
@@ -440,7 +484,7 @@ async function run() {
         });
 
         // Delete review
-        app.delete("/reviews/:id", async (req, res) => {
+        app.delete("/reviews/:id",verifyFirebaseToken, async (req, res) => {
             try {
                 const id = req.params.id;
 
@@ -455,6 +499,16 @@ async function run() {
             } catch (error) {
                 console.error(error);
                 res.status(500).send({ message: "Failed to delete review" });
+            }
+        });
+
+        app.get("/moderator/reviews", async (req, res) => {
+            try {
+                const result = await reviewsCollection.find().toArray();
+                res.send(result);
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ message: "Failed to fetch reviews" });
             }
         });
 
