@@ -203,6 +203,7 @@ async function run() {
                 const {
                     search = "",
                     category,
+                    subject,
                     country,
                     sortBy = "date",
                     order = "desc",
@@ -212,6 +213,7 @@ async function run() {
 
                 const query = {};
 
+                // 🔍 Search
                 if (search) {
                     query.$or = [
                         { scholarshipName: { $regex: search, $options: "i" } },
@@ -220,43 +222,52 @@ async function run() {
                     ];
                 }
 
-                if (category) {
-                    query.scholarshipCategory = category;
-                }
+                // 🎯 Filters
+                if (category) query.scholarshipCategory = category;
+                if (subject) query.subjectCategory = subject;
+                if (country) query.universityCountry = country;
 
-                if (country) {
-                    query.universityCountry = country;
-                }
-
+                // 🔑 STABLE SORT (THIS IS THE MAIN FIX)
                 let sortQuery = {};
+
                 if (sortBy === "fee") {
-                    sortQuery.applicationFees = order === "asc" ? 1 : -1;
+                    sortQuery = {
+                        applicationFees: order === "asc" ? 1 : -1,
+                        _id: 1, // ✅ secondary sort (VERY IMPORTANT)
+                    };
                 } else {
-                    sortQuery.createdAt = order === "asc" ? 1 : -1;
+                    sortQuery = {
+                        createdAt: order === "asc" ? 1 : -1,
+                        _id: 1, // ✅ secondary sort (VERY IMPORTANT)
+                    };
                 }
 
-                const skip = (Number(page) - 1) * Number(limit);
+                const pageNumber = Number(page);
+                const pageLimit = Number(limit);
+                const skip = (pageNumber - 1) * pageLimit;
 
                 const data = await scholarshipsCollection
                     .find(query)
                     .sort(sortQuery)
                     .skip(skip)
-                    .limit(Number(limit))
+                    .limit(pageLimit)
                     .toArray();
 
                 const total = await scholarshipsCollection.countDocuments(query);
 
                 res.send({
                     data,
+                    page: pageNumber,
+                    totalPages: Math.ceil(total / pageLimit),
                     total,
-                    page: Number(page),
-                    totalPages: Math.ceil(total / limit),
                 });
             } catch (error) {
                 console.error(error);
                 res.status(500).send({ message: "Failed to fetch scholarships" });
             }
         });
+
+
 
         // for analytics
         app.get("/analytics/scholarships", async (req, res) => {
