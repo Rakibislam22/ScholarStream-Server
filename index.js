@@ -9,7 +9,10 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // middleware
-app.use(cors());
+app.use(cors({
+    origin: [process.env.SITE_DOMAIN],
+    credentials: true
+}));
 app.use(express.json());
 
 // FB ADmin SDK
@@ -65,7 +68,7 @@ const client = new MongoClient(uri, {
 
 async function run() {
     try {
-        await client.connect();
+        // await client.connect();
 
         const db = client.db('scholarships-db');
         const userCollection = db.collection('users');
