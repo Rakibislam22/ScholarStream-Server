@@ -258,6 +258,17 @@ async function run() {
             }
         });
 
+        // for analytics
+        app.get("/analytics/scholarships", async (req, res) => {
+            try {
+                const scholarships = await scholarshipsCollection.find().toArray();
+                res.send(scholarships);
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ message: "Failed to fetch analytics data" });
+            }
+        });
+
         // Get top scholarships (lowest fee or recent)
         app.get("/top-scholarships", async (req, res) => {
             try {
