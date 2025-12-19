@@ -73,6 +73,53 @@ async function run() {
         const reviewsCollection = db.collection('reviews');
         const applicationCollection = db.collection('Applications');
 
+        const verifyAdmin = async (req, res, next) => {
+            try {
+                const email = req.decoded?.email;
+
+                if (!email) {
+                    return res.status(403).send({ message: "Forbidden access" });
+                }
+
+                const user = await userCollection.findOne({ email });
+
+                if (!user || user.role !== "Admin") {
+                    return res.status(403).send({ message: "Admin access required" });
+                }
+
+                next();
+            } catch (error) {
+                console.error("Admin verification failed:", error);
+                res.status(500).send({ message: "Server error" });
+            }
+        };
+
+        const verifyModerator = async (req, res, next) => {
+            try {
+                const email = req.decoded?.email;
+
+                if (!email) {
+                    return res.status(403).send({ message: "Forbidden access" });
+                }
+
+                const user = await userCollection.findOne({ email });
+
+                if (
+                    !user ||
+                    (user.role !== "Moderator" && user.role !== "Admin")
+                ) {
+                    return res
+                        .status(403)
+                        .send({ message: "Moderator access required" });
+                }
+
+                next();
+            } catch (error) {
+                console.error("Moderator verification failed:", error);
+                res.status(500).send({ message: "Server error" });
+            }
+        };
+
         app.post('/users', async (req, res) => {
             const newUser = req.body;
             const email = newUser.email;
@@ -100,7 +147,7 @@ async function run() {
             res.send({ role: user?.role || 'user' })
         })
 
-        app.patch('/users/role/:id',verifyFirebaseToken, async (req, res) => {
+        app.patch('/users/role/:id', verifyFirebaseToken, async (req, res) => {
             const id = req.params.id;
             const { role } = req.body;
 
@@ -113,7 +160,7 @@ async function run() {
             res.send(result);
         });
 
-        app.delete('/users/:id',verifyFirebaseToken, async (req, res) => {
+        app.delete('/users/:id', verifyFirebaseToken, verifyAdmin, async (req, res) => {
             try {
                 const id = req.params.id;
 
@@ -148,10 +195,92 @@ async function run() {
             }
         });
 
-        app.get('/scholarships', async (req, res) => {
-            const allSc = await scholarshipsCollection.find().toArray();
-            res.send(allSc);
-        })
+        app.get("/scholarships", async (req, res) => {
+            try {
+                const {
+                    search = "",
+                    category,
+                    country,
+                    sortBy = "date",
+                    order = "desc",
+                    page = 1,
+                    limit = 8,
+                } = req.query;
+
+                const query = {};
+
+                if (search) {
+                    query.$or = [
+                        { scholarshipName: { $regex: search, $options: "i" } },
+                        { universityName: { $regex: search, $options: "i" } },
+                        { degree: { $regex: search, $options: "i" } },
+                    ];
+                }
+
+                if (category) {
+                    query.scholarshipCategory = category;
+                }
+
+                if (country) {
+                    query.universityCountry = country;
+                }
+
+                let sortQuery = {};
+                if (sortBy === "fee") {
+                    sortQuery.applicationFees = order === "asc" ? 1 : -1;
+                } else {
+                    sortQuery.createdAt = order === "asc" ? 1 : -1;
+                }
+
+                const skip = (Number(page) - 1) * Number(limit);
+
+                const data = await scholarshipsCollection
+                    .find(query)
+                    .sort(sortQuery)
+                    .skip(skip)
+                    .limit(Number(limit))
+                    .toArray();
+
+                const total = await scholarshipsCollection.countDocuments(query);
+
+                res.send({
+                    data,
+                    total,
+                    page: Number(page),
+                    totalPages: Math.ceil(total / limit),
+                });
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ message: "Failed to fetch scholarships" });
+            }
+        });
+
+        // Get top scholarships (lowest fee or recent)
+        app.get("/top-scholarships", async (req, res) => {
+            try {
+                const { sort = "fee" } = req.query;
+
+                let sortQuery = {};
+
+                if (sort === "recent") {
+                    sortQuery = { createdAt: -1 };
+                } else {
+                    // default: lowest application fee
+                    sortQuery = { applicationFees: 1 };
+                }
+
+                const result = await scholarshipsCollection
+                    .find()
+                    .sort(sortQuery)
+                    .limit(6)
+                    .toArray();
+
+                res.send(result);
+            } catch (error) {
+                console.error(error);
+                res.status(500).send({ message: "Failed to fetch top scholarships" });
+            }
+        });
 
         app.get('/scholarship/:id', async (req, res) => {
             const id = req.params.id;
@@ -169,7 +298,7 @@ async function run() {
         })
 
         // Create new scholarship
-        app.post('/add-scholarship',verifyFirebaseToken, async (req, res) => {
+        app.post('/add-scholarship', verifyFirebaseToken, verifyAdmin, async (req, res) => {
             try {
                 const scholarshipData = req.body;
 
@@ -194,7 +323,7 @@ async function run() {
         });
 
         // Update scholarship
-        app.patch('/scholarship/:id',verifyFirebaseToken, async (req, res) => {
+        app.patch('/scholarship/:id', verifyFirebaseToken, verifyAdmin, async (req, res) => {
             try {
                 const id = req.params.id;
                 const updatedData = req.body;
@@ -213,7 +342,7 @@ async function run() {
         });
 
         // Delete scholarship
-        app.delete('/scholarship/:id',verifyFirebaseToken, async (req, res) => {
+        app.delete('/scholarship/:id', verifyFirebaseToken, verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) };
 
@@ -222,7 +351,7 @@ async function run() {
         });
 
         // Application post
-        app.post("/applications",verifyFirebaseToken, async (req, res) => {
+        app.post("/applications", verifyFirebaseToken, async (req, res) => {
             try {
                 const application = req.body;
 
@@ -240,7 +369,7 @@ async function run() {
         });
 
         // after payment complete status update
-        app.patch("/applications/payment/:id",verifyFirebaseToken, async (req, res) => {
+        app.patch("/applications/payment/:id", verifyFirebaseToken, async (req, res) => {
             const id = req.params.id;
 
             await applicationCollection.updateOne(
@@ -292,7 +421,7 @@ async function run() {
         });
 
         // Delete application (only if pending)
-        app.delete("/applications/:id",verifyFirebaseToken, async (req, res) => {
+        app.delete("/applications/:id", verifyFirebaseToken, async (req, res) => {
             try {
                 const id = req.params.id;
 
@@ -325,7 +454,7 @@ async function run() {
         });
 
         // Get all applications for Moderator
-        app.get("/moderator/applications", async (req, res) => {
+        app.get("/moderator/applications", verifyFirebaseToken, verifyModerator, async (req, res) => {
             try {
                 const result = await applicationCollection.find().toArray();
                 res.send(result);
@@ -336,7 +465,7 @@ async function run() {
         });
 
         // Update application status
-        app.patch("/applications/status/:id",verifyFirebaseToken, async (req, res) => {
+        app.patch("/applications/status/:id", verifyFirebaseToken, verifyModerator, async (req, res) => {
             try {
                 const id = req.params.id;
                 const { status } = req.body;
@@ -358,7 +487,7 @@ async function run() {
 
 
         // Add or update application feedback
-        app.patch("/applications/feedback/:id",verifyFirebaseToken, async (req, res) => {
+        app.patch("/applications/feedback/:id", verifyFirebaseToken, verifyModerator, async (req, res) => {
             try {
                 const id = req.params.id;
                 const { feedback } = req.body;
@@ -379,7 +508,7 @@ async function run() {
         });
 
         // Reject application
-        app.patch("/applications/reject/:id",verifyFirebaseToken, async (req, res) => {
+        app.patch("/applications/reject/:id", verifyFirebaseToken, verifyModerator, async (req, res) => {
             try {
                 const id = req.params.id;
 
@@ -400,7 +529,7 @@ async function run() {
 
 
         // Stripe Payment api
-        app.post("/create-payment-intent",verifyFirebaseToken, async (req, res) => {
+        app.post("/create-payment-intent", verifyFirebaseToken, async (req, res) => {
             const { amount, applicationId, scholarshipId, userId, userEmail } = req.body;
 
             const session = await stripe.checkout.sessions.create({
@@ -431,7 +560,7 @@ async function run() {
         });
 
         // Post review
-        app.post("/reviews",verifyFirebaseToken, async (req, res) => {
+        app.post("/reviews", verifyFirebaseToken, async (req, res) => {
             const recData = req.body;
 
             const result = await reviewsCollection.insertOne(recData);
@@ -460,7 +589,7 @@ async function run() {
         });
 
         // Update review
-        app.patch("/reviews/:id",verifyFirebaseToken, async (req, res) => {
+        app.patch("/reviews/:id", verifyFirebaseToken, async (req, res) => {
             try {
                 const id = req.params.id;
                 const { ratingPoint, reviewComment } = req.body;
@@ -484,7 +613,7 @@ async function run() {
         });
 
         // Delete review
-        app.delete("/reviews/:id",verifyFirebaseToken, async (req, res) => {
+        app.delete("/reviews/:id", verifyFirebaseToken, async (req, res) => {
             try {
                 const id = req.params.id;
 
@@ -502,7 +631,7 @@ async function run() {
             }
         });
 
-        app.get("/moderator/reviews", async (req, res) => {
+        app.get("/moderator/reviews", verifyFirebaseToken, verifyModerator, async (req, res) => {
             try {
                 const result = await reviewsCollection.find().toArray();
                 res.send(result);
