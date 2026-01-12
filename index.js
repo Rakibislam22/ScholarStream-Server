@@ -138,10 +138,20 @@ async function run() {
             }
         })
 
-        app.get('/users', async (req, res) => {
+        app.get('/users',verifyFirebaseToken, async (req, res) => {
             const result = await userCollection.find().toArray();
             res.send(result);
         });
+
+        app.patch('/users',verifyFirebaseToken, async (req, res) => {
+            const { email } = req.query;
+            const { name, photo } = req.body;
+            const query = { email }
+            const updateData = { $set: { photoURL: photo, name } }
+            const result = await userCollection.updateOne(query, updateData);
+            res.send(result);
+        });
+
 
         app.get('/users/:email/role', async (req, res) => {
             const email = req.params.email;
