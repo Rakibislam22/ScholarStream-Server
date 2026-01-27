@@ -9,10 +9,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // middleware
-app.use(cors({
-    origin: [process.env.SITE_DOMAIN],
-    credentials: true
-}));
+app.use(cors());
 app.use(express.json());
 
 // FB ADmin SDK
